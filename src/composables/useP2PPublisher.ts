@@ -433,7 +433,7 @@ export function useP2PPublisher() {
       const hasLiveSession = [...sessions.values()].some(
         (s) => s.channel?.readyState === 'open'
       )
-      if (hasLiveSession && phase.value !== 'idle') {
+      if (hasLiveSession) {
         return
       }
       phase.value = 'error'
