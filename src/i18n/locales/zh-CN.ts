@@ -276,6 +276,8 @@ export default {
         publisher_offline: '发布者已离线',
         signaling_error: '信令连接失败',
         sink_unavailable: '无法写入文件',
+        channel_closed: '直连中断，请重新取件',
+        peer_connection_failed: '直连建立失败，请检查网络后重试',
         blob_fallback_too_large: '文件过大，当前环境无法保存，请改用支持流式落盘的浏览器'
       }
     }

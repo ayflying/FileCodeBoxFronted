@@ -280,6 +280,8 @@ export default {
         publisher_offline: 'The publisher is offline',
         signaling_error: 'Signaling connection failed',
         sink_unavailable: 'Unable to write the file',
+        channel_closed: 'Direct connection lost, please retrieve again',
+        peer_connection_failed: 'Failed to establish direct connection, please check your network',
         blob_fallback_too_large:
           'File too large to save here; use a browser that supports streaming to disk'
       }

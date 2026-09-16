@@ -7,7 +7,14 @@
  * 承担「每块校验」与「整文件校验」。
  */
 
-export const P2P_CHUNK_SIZE = 256 * 1024
+/**
+ * 单块 payload 大小。数据帧总大小 = 8B 帧头 + P2P_CHUNK_SIZE，
+ * 必须严格小于浏览器 SCTP 单条消息上限（max-message-size，Chromium 间协商为
+ * 262144B，历史上Firefox 最低为 65536B）。此前取 256KB 时加上帧头恰好超限
+ * 8 字节，导致每一帧都 `Trying to send message larger than max-message-size`，
+ * 传输 100% 失败。取 32KB 在所有浏览器下都有充足余量。
+ */
+export const P2P_CHUNK_SIZE = 32 * 1024
 
 /** 数据帧头：[4B 块序号][4B CRC32]，均大端 */
 export const P2P_FRAME_HEADER_BYTES = 8

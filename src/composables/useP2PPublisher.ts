@@ -39,12 +39,13 @@ const BUFFER_HIGH_WATER = 8 * 1024 * 1024
 const BUFFER_WAIT_TIMEOUT_MS = 15000
 
 /**
- * 数据通道安全发送：send 前重查 readyState 并吞掉 native 异常
+ * 数据通道安全发送：send 前重查 readyState 并捕获 native 异常
  * （检查点与 send 之间隔着 await，通道可能在间隙中关闭）。
- * 失败返回 false，由调用方统一转为业务错误（channel_closed / peer_aborted）。
+ * 成功返回 null；失败返回错误描述——readyState 不对时是 'channel_closed'，
+ * 否则透出 native 报错原文（如 max-message-size 超限），避免真实根因被吞掉。
  */
-const safeSendFrame = (channel: RTCDataChannel, frame: ArrayBuffer | string): boolean => {
-  if (channel.readyState !== 'open') return false
+const safeSendFrame = (channel: RTCDataChannel, frame: ArrayBuffer | string): string | null => {
+  if (channel.readyState !== 'open') return 'channel_closed'
   try {
     // lib.dom 的 send 按类型分重载，string | ArrayBuffer 联合传入会重载解析失败，必须收窄
     if (typeof frame === 'string') {
@@ -52,9 +53,9 @@ const safeSendFrame = (channel: RTCDataChannel, frame: ArrayBuffer | string): bo
     } else {
       channel.send(frame)
     }
-    return true
-  } catch {
-    return false
+    return null
+  } catch (error) {
+    return `send_failed: ${error instanceof Error ? error.message : String(error)}`
   }
 }
 
@@ -208,8 +209,10 @@ export function useP2PPublisher() {
         checksum = crc32Update(checksum, payload)
         await waitForBuffer(channel)
         if (session.aborted) throw new Error('peer_aborted')
-        if (!safeSendFrame(channel, buildChunkFrame(index, payload))) {
-          throw new Error('channel_closed')
+        const sendError = safeSendFrame(channel, buildChunkFrame(index, payload))
+        if (sendError) {
+          console.warn(`[p2p] 第 ${index} 块发送失败:`, sendError)
+          throw new Error(sendError)
         }
         session.sentBytes += payload.byteLength
         currentChunk.value = index + 1
@@ -217,13 +220,13 @@ export function useP2PPublisher() {
       }
 
       // end 帧同样可能碰上通道竞态关闭，不能裸 send
-      if (
-        !safeSendFrame(
-          channel,
-          encodeControlFrame({ k: 'end', checksum: crc32Hex(checksum) })
-        )
-      ) {
-        throw new Error('channel_closed')
+      const endError = safeSendFrame(
+        channel,
+        encodeControlFrame({ k: 'end', checksum: crc32Hex(checksum) })
+      )
+      if (endError) {
+        console.warn('[p2p] end 帧发送失败:', endError)
+        throw new Error(endError)
       }
       servedCount.value += 1
       lastTransport.value = 'direct'
@@ -296,7 +299,7 @@ export function useP2PPublisher() {
       channel.onopen = () => {
         const file = sourceFile.value
         if (!file) return
-        const metaSent = safeSendFrame(
+        const metaError = safeSendFrame(
           channel,
           encodeControlFrame({
             k: 'meta',
@@ -307,7 +310,11 @@ export function useP2PPublisher() {
             checksum: ''
           })
         )
-        if (!metaSent) return
+        if (metaError) {
+          console.warn('[p2p] meta 帧发送失败:', metaError)
+          errorMessage.value = metaError
+          return
+        }
         void streamFileToPeer(session)
       }
 
@@ -350,6 +357,12 @@ export function useP2PPublisher() {
       const peerId = String(message.peer || '')
       const session = sessions.get(peerId)
       if (session) {
+        // 直连通道仍 open 时（如下载端手机切后台导致信令断开）不能主动关——
+        // 媒体面不受信令影响，杀掉会把正在进行的传输一起打死（与下载端
+        // 「信令断开不自杀」是对称约束）；只清理已无活通道的会话
+        if (session.channel?.readyState === 'open') {
+          return
+        }
         try {
           session.connection.close()
         } catch {
