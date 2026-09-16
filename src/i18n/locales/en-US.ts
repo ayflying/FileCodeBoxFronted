@@ -227,6 +227,65 @@ export default {
     fileRecords: 'File Records'
   },
 
+  // P2P direct transfer
+  p2p: {
+    toggleLabel: 'P2P direct transfer',
+    toggleHint:
+      'The file never touches the server — it goes straight from your browser to the receiver. Keep this page open.',
+    singleFileOnly: 'P2P direct transfer shares one file at a time',
+    disabled: 'P2P direct transfer is disabled on this site',
+    sizeExceeded: 'P2P single-file limit is {size}',
+    prepareFailed: 'Failed to create the P2P share',
+    publish: {
+      title: 'P2P direct transfer',
+      preparing: 'Registering the share...',
+      waiting: 'Waiting for the receiver',
+      serving: 'Transferring the file',
+      stopped: 'Sharing stopped',
+      error: 'Sharing failed',
+      online: 'Sharing',
+      offline: 'Offline',
+      codeLabel: 'Retrieval code',
+      peers: 'Connected receivers',
+      served: 'Transfers completed',
+      keepOpen: 'Keep this page open — closing it makes the file unavailable.',
+      stop: 'Stop sharing',
+      close: 'Hide',
+      progress: 'Transfer progress',
+      chunkProgress: 'Chunk {current} / {total}',
+      copyCode: 'Copy code',
+      copyLink: 'Copy link',
+      copied: 'Retrieval code copied'
+    },
+    retrieve: {
+      badge: 'P2P direct',
+      online: 'Publisher online',
+      offline: 'Publisher offline',
+      waitingPublisher: 'The publisher is offline, please try again later',
+      connecting: 'Establishing a direct connection...',
+      receiving: 'Receiving file',
+      completed: 'Received',
+      failed: 'Transfer failed',
+      download: 'Direct retrieve',
+      downloading: 'Retrieving',
+      cancel: 'Cancel',
+      verifiedOk: 'Integrity check passed',
+      verifiedFail: 'Integrity check failed, please retrieve again',
+      bytes: 'Received {received} / {total}',
+      speed: 'Speed {speed}/s',
+      savedAs: 'Saved as {name}',
+      errors: {
+        not_p2p_share: 'This code is not a P2P share',
+        share_expired: 'This share has expired',
+        publisher_offline: 'The publisher is offline',
+        signaling_error: 'Signaling connection failed',
+        sink_unavailable: 'Unable to write the file',
+        blob_fallback_too_large:
+          'File too large to save here; use a browser that supports streaming to disk'
+      }
+    }
+  },
+
   // Retrieve page
   retrieve: {
     title: 'Retrieve File',

@@ -28,7 +28,15 @@
             mode="send"
             @title-click="toRetrieve"
           />
-          <form @submit.prevent="handleSubmit" class="space-y-6 sm:space-y-8">
+          <P2PPublishPanel
+            v-if="p2pPublishState.phase !== 'idle'"
+            :state="p2pPublishState"
+            @stop="stopP2PShare"
+            @close="dismissP2PShare"
+            @copy-code="copyP2PCode"
+            @copy-link="copyP2PLink"
+          />
+          <form v-else @submit.prevent="handleSubmit" class="space-y-6 sm:space-y-8">
             <SendTypeSelector :selected-type="sendType" @update:selected-type="sendType = $event" />
 
             <transition name="fade" mode="out-in">
@@ -57,6 +65,56 @@
                 />
               </div>
             </transition>
+            <div
+              v-if="sendType === 'file' && p2pSiteEnabled"
+              class="rounded-2xl border p-3.5 transition-colors sm:rounded-[1.25rem] sm:p-4"
+              :class="
+                isDarkMode
+                  ? 'border-zinc-800/70 bg-zinc-950/40'
+                  : 'border-slate-200/80 bg-slate-50/60'
+              "
+            >
+              <label
+                class="flex items-start gap-3"
+                :class="p2pToggleDisabled ? 'cursor-not-allowed' : 'cursor-pointer'"
+              >
+                <input
+                  v-model="p2pToggleChecked"
+                  type="checkbox"
+                  :disabled="p2pToggleDisabled"
+                  class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <span class="min-w-0 flex-1">
+                  <span
+                    class="flex items-center gap-1.5 text-sm font-semibold"
+                    :class="
+                      p2pToggleDisabled
+                        ? isDarkMode
+                          ? 'text-zinc-500'
+                          : 'text-slate-400'
+                        : isDarkMode
+                          ? 'text-zinc-100'
+                          : 'text-zinc-900'
+                    "
+                  >
+                    <ZapIcon class="h-3.5 w-3.5" />
+                    {{ t('p2p.toggleLabel') }}
+                  </span>
+                  <span
+                    class="mt-1 block text-[11px] leading-relaxed"
+                    :class="isDarkMode ? 'text-zinc-500' : 'text-slate-500'"
+                  >
+                    {{
+                      !p2pSiteEnabled
+                        ? t('p2p.disabled')
+                        : p2pToggleDisabled
+                          ? t('p2p.singleFileOnly')
+                          : t('p2p.toggleHint')
+                    }}
+                  </span>
+                </span>
+              </label>
+            </div>
             <ExpirationSelector
               v-model:expiration-method="expirationMethod"
               v-model:expiration-value="expirationValue"
@@ -145,7 +203,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { CloudDownloadIcon, HistoryIcon, LoaderCircleIcon, SendIcon } from 'lucide-vue-next'
+import { CloudDownloadIcon, HistoryIcon, LoaderCircleIcon, SendIcon, ZapIcon } from 'lucide-vue-next'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SendTypeSelector from '@/components/common/SendTypeSelector.vue'
 import FileUploadArea from '@/components/common/FileUploadArea.vue'
@@ -154,6 +212,7 @@ import TextInputArea from '@/components/common/TextInputArea.vue'
 import SideDrawer from '@/components/common/SideDrawer.vue'
 import SentRecordList from '@/components/common/SentRecordList.vue'
 import SentRecordDetailModal from '@/components/common/SentRecordDetailModal.vue'
+import P2PPublishPanel from '@/components/common/P2PPublishPanel.vue'
 import { useInjectedDarkMode, useSendFlow } from '@/composables'
 
 const isDarkMode = useInjectedDarkMode()
@@ -189,7 +248,15 @@ const {
   handlePaste,
   handleSubmit,
   toggleDrawer,
-  viewDetails
+  viewDetails,
+  p2pSiteEnabled,
+  p2pToggleChecked,
+  p2pToggleDisabled,
+  p2pPublishState,
+  copyP2PCode,
+  copyP2PLink,
+  stopP2PShare,
+  dismissP2PShare
 } = useSendFlow()
 
 const toRetrieve = () => {

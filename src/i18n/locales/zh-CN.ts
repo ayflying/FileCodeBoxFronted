@@ -224,6 +224,62 @@ export default {
     fileRecords: '取件记录'
   },
 
+  // P2P 直传
+  p2p: {
+    toggleLabel: 'P2P 直传',
+    toggleHint: '文件不经过服务器，直接从你的浏览器传给取件人；请保持本页面打开。',
+    singleFileOnly: 'P2P 直传一次只能分享一个文件',
+    disabled: '站点未启用 P2P 直传',
+    sizeExceeded: 'P2P 单文件上限为 {size}',
+    prepareFailed: 'P2P 分享创建失败',
+    publish: {
+      title: 'P2P 直传',
+      preparing: '正在登记分享...',
+      waiting: '等待取件人连接',
+      serving: '正在直传文件',
+      stopped: '已停止分享',
+      error: '分享出错',
+      online: '发布中',
+      offline: '已离线',
+      codeLabel: '取件码',
+      peers: '已连接取件人',
+      served: '已完成传输',
+      keepOpen: '请保持此页面打开，关闭页面后取件人将无法获取文件。',
+      stop: '停止分享',
+      close: '收起',
+      progress: '传输进度',
+      chunkProgress: '第 {current} / {total} 块',
+      copyCode: '复制取件码',
+      copied: '取件码已复制'
+    },
+    retrieve: {
+      badge: 'P2P 直传',
+      online: '发布者在线',
+      offline: '发布者不在线',
+      waitingPublisher: '发布者不在线，暂时无法取件，请稍后再试',
+      connecting: '正在建立直连...',
+      receiving: '正在接收文件',
+      completed: '接收完成',
+      failed: '接收失败',
+      download: '直连取件',
+      downloading: '取件中',
+      cancel: '取消',
+      verifiedOk: '完整性校验通过',
+      verifiedFail: '完整性校验未通过，请重新取件',
+      bytes: '已接收 {received} / {total}',
+      speed: '速度 {speed}/s',
+      savedAs: '已保存为 {name}',
+      errors: {
+        not_p2p_share: '该取件码不是 P2P 分享',
+        share_expired: '分享已失效',
+        publisher_offline: '发布者已离线',
+        signaling_error: '信令连接失败',
+        sink_unavailable: '无法写入文件',
+        blob_fallback_too_large: '文件过大，当前环境无法保存，请改用支持流式落盘的浏览器'
+      }
+    }
+  },
+
   // 取件页面
   retrieve: {
     title: '提取文件',

@@ -39,6 +39,11 @@ export const getSafeFilename = (name: string) =>
     .trim()
     .slice(0, 180) || 'download'
 
+/** 供 P2P 直传等自建 Blob 的链路保存文件，统一走 file-saver。 */
+export async function saveBlobAsDownload(blob: Blob, filename: string): Promise<void> {
+  await saveBlobAsFile(blob, getSafeFilename(filename))
+}
+
 const getFilenameFromDisposition = (disposition?: string) => {
   if (!disposition) return ''
 

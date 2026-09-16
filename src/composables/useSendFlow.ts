@@ -5,12 +5,15 @@ import { useAdminStore } from '@/stores/adminStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useFileDataStore } from '@/stores/fileData'
 import type { SendType, SentFileRecord, UploadProgress } from '@/types'
+import { copyRetrieveCode, copyRetrieveLink } from '@/utils/clipboard'
 import { getClipboardFile, insertTextAtSelection } from '@/utils/clipboard-paste'
 import { getErrorMessage } from '@/utils/common'
 import { getStorageUnit } from '@/utils/convert'
 import { calculateFileHash } from '@/utils/file-processing'
+import { isP2PFlagOn, normalizeP2PMaxSize } from '@/utils/p2p-config'
 import { buildSentRecord, isExpirationWithinLimit } from '@/utils/send-record'
 import { createSentRecordActions } from '@/utils/sent-record-actions'
+import { useP2PPublisher } from './useP2PPublisher'
 import { useSendSubmit } from './useSendSubmit'
 
 export function useSendFlow() {
@@ -101,6 +104,68 @@ export function useSendFlow() {
     }
   })
 
+  // ---- P2P 直传（详见 docs/p2p-design.md）----
+  // 站点总开关与勾选框默认值都来自 /api/v1/config，且默认值可被管理面板改写。
+  const p2pPublisher = useP2PPublisher()
+  const p2pSiteEnabled = computed(() => isP2PFlagOn(config.value.enableP2P, false))
+  const p2pMaxFileSize = computed(() => normalizeP2PMaxSize(config.value.p2pMaxSize))
+  const p2pToggleChecked = ref(false)
+  watch(
+    () => config.value.p2pDefaultChecked,
+    (value) => {
+      p2pToggleChecked.value = isP2PFlagOn(value, true)
+    },
+    { immediate: true }
+  )
+  /**
+   * 本次提交是否走 P2P 直传。
+   * 多选文件时不走：P2P 的载荷是单个 File，若在这里打包 zip 会与「直传你选中的那几个文件」
+   * 的语义不符，因此多选一律回落普通上传（UI 上开关会置灰并说明原因）。
+   */
+  const isP2PUploadActive = computed(
+    () =>
+      p2pSiteEnabled.value &&
+      p2pToggleChecked.value &&
+      sendType.value === 'file' &&
+      selectedFiles.value.length === 0
+  )
+  const p2pToggleDisabled = computed(
+    () => !p2pSiteEnabled.value || selectedFiles.value.length > 0
+  )
+  /** P2P 的文件不进服务器，因此上限取 p2pMaxSize，而不是 uploadSize */
+  const effectiveMaxFileSize = computed(() =>
+    isP2PUploadActive.value && p2pMaxFileSize.value > 0
+      ? p2pMaxFileSize.value
+      : config.value.uploadSize
+  )
+  /** 拍平成普通对象，避免模板里到处写 .value */
+  const p2pPublishState = computed(() => ({
+    phase: p2pPublisher.phase.value,
+    code: p2pPublisher.code.value,
+    fileName: p2pPublisher.fileName.value,
+    fileSize: p2pPublisher.fileSize.value,
+    expiresAt: p2pPublisher.expiresAt.value,
+    progress: p2pPublisher.progress.value,
+    servedCount: p2pPublisher.servedCount.value,
+    activePeers: p2pPublisher.activePeers.value,
+    transferredBytes: p2pPublisher.transferredBytes.value,
+    currentChunk: p2pPublisher.currentChunk.value,
+    totalChunks: p2pPublisher.totalChunks.value,
+    maxPeers: p2pPublisher.maxPeers.value,
+    lastTransport: p2pPublisher.lastTransport.value,
+    errorMessage: p2pPublisher.errorMessage.value,
+    isActive: p2pPublisher.isActive.value
+  }))
+  const stopP2PShare = async () => {
+    await p2pPublisher.stop()
+  }
+  const dismissP2PShare = async () => {
+    await p2pPublisher.stop()
+    p2pPublisher.reset()
+  }
+  const copyP2PCode = () => copyRetrieveCode(p2pPublisher.code.value, { notify: notifyCopyResult })
+  const copyP2PLink = () => copyRetrieveLink(p2pPublisher.code.value, { notify: notifyCopyResult })
+
   const checkOpenUpload = () => {
     if (config.value.openUpload === 0 && !adminStore.hasToken) {
       alertStore.showAlert(t('send.messages.guestUploadDisabled'), 'error')
@@ -118,9 +183,13 @@ export function useSendFlow() {
   }
 
   const checkFileSize = (file: File) => {
-    if (file.size > config.value.uploadSize) {
+    const limit = effectiveMaxFileSize.value
+    if (file.size > limit) {
+      const size = getStorageUnit(limit)
       alertStore.showAlert(
-        t('send.messages.fileSizeExceeded', { size: getStorageUnit(config.value.uploadSize) }),
+        isP2PUploadActive.value
+          ? t('p2p.sizeExceeded', { size })
+          : t('send.messages.fileSizeExceeded', { size }),
         'error'
       )
       selectedFile.value = null
@@ -309,6 +378,35 @@ export function useSendFlow() {
       }
 
       const expireValue = expirationValue.value ? parseInt(expirationValue.value) : 1
+
+      if (isP2PUploadActive.value) {
+        // P2P 直传：文件不出浏览器，服务端只登记元数据，因此这里既没有上传进度，
+        // 也不能清空 selectedFile —— 面板要保持在线才能把文件发给取件人。
+        if (!selectedFile.value) {
+          alertStore.showAlert(t('send.messages.selectFile'), 'error')
+          return
+        }
+
+        try {
+          await p2pPublisher.publish(selectedFile.value, expireValue, expirationMethod.value)
+        } catch (error: unknown) {
+          const raw = error instanceof Error ? error.message : ''
+          alertStore.showAlert(
+            raw && raw !== 'publish_failed' ? raw : t('p2p.prepareFailed'),
+            'error'
+          )
+          return
+        }
+
+        alertStore.showAlert(
+          t('send.messages.sendSuccess', { code: p2pPublisher.code.value }),
+          'success'
+        )
+        resetUploadProgress()
+        await copyRetrieveLink(p2pPublisher.code.value, { notify: notifyCopyResult })
+        return
+      }
+
       let response
       if (sendType.value === 'file') {
         response = await submitFile({
@@ -415,6 +513,17 @@ export function useSendFlow() {
     handlePaste,
     handleSubmit,
     toggleDrawer,
-    viewDetails
+    viewDetails,
+    // ---- P2P 直传 ----
+    p2pSiteEnabled,
+    p2pToggleChecked,
+    p2pToggleDisabled,
+    p2pMaxFileSize,
+    isP2PUploadActive,
+    p2pPublishState,
+    copyP2PCode,
+    copyP2PLink,
+    stopP2PShare,
+    dismissP2PShare
   }
 }

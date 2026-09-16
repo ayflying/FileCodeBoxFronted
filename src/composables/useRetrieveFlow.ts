@@ -9,6 +9,7 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { getErrorMessage, getResponseMessage } from '@/utils/common'
 import { renderMarkdownPreview } from '@/utils/content-preview'
 import { downloadReceivedRecord } from '@/utils/download-action'
+import { useP2PDownloader } from './useP2PDownloader'
 
 type InputStatus = {
   readonly: boolean
@@ -123,8 +124,17 @@ export function useRetrieveFlow() {
     inputStatus.value.readonly = true
     inputStatus.value.loading = true
     error.value = ''
+    let keepCode = false
 
     try {
+      // 先在 P2P 控制面探一次：是 P2P 分享就交给直连面板，不走服务器取件
+      const p2pStatus = await p2pDownloader.inspect(normalizedCode.value)
+      if (p2pStatus) {
+        keepCode = true
+        p2pShareCode.value = normalizedCode.value
+        return
+      }
+
       const res = await FileService.selectFile(normalizedCode.value)
       if (res.code === 200 && res.detail) {
         const newFileData = createRecord(res.detail)
@@ -153,7 +163,9 @@ export function useRetrieveFlow() {
       isRetrieving.value = false
       inputStatus.value.readonly = false
       inputStatus.value.loading = false
-      code.value = ''
+      if (!keepCode) {
+        code.value = ''
+      }
     }
   }
 
@@ -230,6 +242,13 @@ export function useRetrieveFlow() {
       resetInspection()
     }
 
+    // 用户改了码就撤掉上一个 P2P 面板，避免面板与输入框指向两个不同的分享
+    if (p2pShareCode.value && nextCode !== p2pShareCode.value) {
+      p2pDownloader.cancel()
+      p2pDownloader.reset()
+      p2pShareCode.value = ''
+    }
+
     if (nextCode.length < 5 && error.value) {
       error.value = ''
     }
@@ -263,6 +282,12 @@ export function useRetrieveFlow() {
     showFilePreview,
     showContentPreview,
     toggleDrawer,
-    viewDetails
+    viewDetails,
+    // ---- P2P 直传取件 ----
+    p2pShareCode,
+    p2pDownloadState,
+    startP2PDownload,
+    cancelP2PDownload,
+    dismissP2PShare
   }
 }

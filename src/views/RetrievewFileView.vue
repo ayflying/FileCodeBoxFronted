@@ -23,7 +23,15 @@
             mode="retrieve"
             @title-click="toSend"
           />
+          <P2PDownloadPanel
+            v-if="p2pShareCode"
+            :state="p2pDownloadState"
+            @download="startP2PDownload"
+            @cancel="cancelP2PDownload"
+            @close="dismissP2PShare"
+          />
           <RetrieveForm
+            v-else
             v-model="code"
             :input-status="inputStatus"
             :error="!!error"
@@ -75,6 +83,7 @@ import SideDrawer from '@/components/common/SideDrawer.vue'
 import FileDetailModal from '@/components/common/FileDetailModal.vue'
 import FileRecordList from '@/components/common/FileRecordList.vue'
 import ContentPreviewModal from '@/components/common/ContentPreviewModal.vue'
+import P2PDownloadPanel from '@/components/common/P2PDownloadPanel.vue'
 import { useRetrieveFlow } from '@/composables'
 import { useInjectedDarkMode } from '@/composables'
 
@@ -99,7 +108,12 @@ const {
   handleSubmit,
   showContentPreview,
   toggleDrawer,
-  viewDetails
+  viewDetails,
+  p2pShareCode,
+  p2pDownloadState,
+  startP2PDownload,
+  cancelP2PDownload,
+  dismissP2PShare
 } = useRetrieveFlow()
 
 const toSend = () => {
