@@ -145,7 +145,7 @@ export function useP2PDownloader() {
         await fail(error instanceof Error ? error.message : 'finalize_failed')
         return
       }
-      verified.value = expectedChecksum === control.checksum
+      verified.value = crc32Hex(expectedChecksum) === control.checksum
       phase.value = 'completed'
       transport.value = 'direct'
       cleanup()
