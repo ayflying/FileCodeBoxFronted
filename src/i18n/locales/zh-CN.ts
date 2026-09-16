@@ -250,6 +250,7 @@ export default {
       progress: '传输进度',
       chunkProgress: '第 {current} / {total} 块',
       copyCode: '复制取件码',
+      copyLink: '复制链接',
       copied: '取件码已复制'
     },
     retrieve: {
