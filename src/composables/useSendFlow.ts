@@ -5,7 +5,6 @@ import { useAdminStore } from '@/stores/adminStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useFileDataStore } from '@/stores/fileData'
 import type { SendType, SentFileRecord, UploadProgress } from '@/types'
-import { copyRetrieveCode, copyRetrieveLink } from '@/utils/clipboard'
 import { getClipboardFile, insertTextAtSelection } from '@/utils/clipboard-paste'
 import { getErrorMessage } from '@/utils/common'
 import { getStorageUnit } from '@/utils/convert'
@@ -163,8 +162,8 @@ export function useSendFlow() {
     await p2pPublisher.stop()
     p2pPublisher.reset()
   }
-  const copyP2PCode = () => copyRetrieveCode(p2pPublisher.code.value, { notify: notifyCopyResult })
-  const copyP2PLink = () => copyRetrieveLink(p2pPublisher.code.value, { notify: notifyCopyResult })
+  const copyP2PCode = () => sentRecordActions.copyP2PCode(p2pPublisher.code.value)
+  const copyP2PLink = () => sentRecordActions.copyP2PLink(p2pPublisher.code.value)
 
   const checkOpenUpload = () => {
     if (config.value.openUpload === 0 && !adminStore.hasToken) {
@@ -403,7 +402,7 @@ export function useSendFlow() {
           'success'
         )
         resetUploadProgress()
-        await copyRetrieveLink(p2pPublisher.code.value, { notify: notifyCopyResult })
+        await sentRecordActions.copyP2PLink(p2pPublisher.code.value)
         return
       }
 
