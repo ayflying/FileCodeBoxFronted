@@ -46,6 +46,9 @@ export function useP2PDownloader() {
   let queue: Promise<void> = Promise.resolve()
   let lastSampleAt = 0
   let lastSampleBytes = 0
+  let expectedChecksum = 0
+  let expectedChunkIndex = 0
+  const iceServers = ref<RTCIceServer[]>([])
   const speed = ref(0)
 
   const progress = computed(() => {

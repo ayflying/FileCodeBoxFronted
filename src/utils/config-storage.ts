@@ -16,6 +16,13 @@ export type PublicConfig = SystemConfig & {
   themesSelect?: string
   background?: string
   opacity?: number
+  // ---- P2P 直传（/api/v1/config 下发）----
+  enableP2P?: boolean | number | string
+  p2pDefaultChecked?: boolean | number | string
+  p2pMaxSize?: number | string
+  p2pRelayEnabled?: boolean | number | string
+  p2pMaxPeers?: number
+  p2pHeartbeatTimeout?: number
 }
 
 type PublicConfigInput = Omit<Partial<ConfigState>, 'showAdminAddr'> & {
@@ -130,7 +137,14 @@ export function toPublicConfig(
     showAdminAddr: normalizeAdminAddress(config.showAdminAddr ?? config.show_admin_address),
     themesSelect: config.themesSelect,
     background: config.background,
-    opacity: config.opacity
+    opacity: config.opacity,
+    // ---- P2P 直传 ----
+    enableP2P: config.enableP2P,
+    p2pDefaultChecked: config.p2pDefaultChecked,
+    p2pMaxSize: config.p2pMaxSize,
+    p2pRelayEnabled: config.p2pRelayEnabled,
+    p2pMaxPeers: config.p2pMaxPeers,
+    p2pHeartbeatTimeout: config.p2pHeartbeatTimeout
   }
 }
 

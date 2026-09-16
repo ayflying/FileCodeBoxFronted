@@ -70,4 +70,11 @@ export interface ConfigState {
   webdav_url: string
   webdav_username: string
   webdav_password: string
+  // ---- P2P 直传（后端 build_public_p2p_config 下发，见 docs/p2p-design.md）----
+  enableP2P?: boolean | number | string
+  p2pDefaultChecked?: boolean | number | string
+  p2pMaxSize?: number | string
+  p2pRelayEnabled?: boolean | number | string
+  p2pMaxPeers?: number
+  p2pHeartbeatTimeout?: number
 }

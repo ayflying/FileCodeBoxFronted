@@ -41,6 +41,44 @@ export function useRetrieveFlow() {
   const isWorking = computed(() => isInspecting.value || isRetrieving.value)
   const hasValidCode = computed(() => normalizedCode.value.length === 5)
 
+  // ---- P2P 直传取件（详见 docs/p2p-design.md）----
+  const p2pDownloader = useP2PDownloader()
+  const p2pShareCode = ref('')
+  /** 拍平成普通对象，避免模板里到处写 .value */
+  const p2pDownloadState = computed(() => {
+    const status = p2pDownloader.remoteStatus.value
+    return {
+      phase: p2pDownloader.phase.value,
+      name: status?.name ?? '',
+      size: status?.size ?? 0,
+      online: Boolean(status?.online),
+      expired: Boolean(status?.expired),
+      receivedBytes: p2pDownloader.receivedBytes.value,
+      totalBytes: p2pDownloader.totalBytes.value,
+      progress: p2pDownloader.progress.value,
+      speed: p2pDownloader.speed.value,
+      transport: p2pDownloader.transport.value,
+      savedName: p2pDownloader.savedName.value,
+      verified: p2pDownloader.verified.value,
+      errorMessage: p2pDownloader.errorMessage.value
+    }
+  })
+  const startP2PDownload = async () => {
+    if (!p2pShareCode.value) return
+    try {
+      await p2pDownloader.download(p2pShareCode.value)
+    } catch (err: unknown) {
+      alertStore.showAlert(getErrorMessage(err, t('common.downloadFailed')), 'error')
+    }
+  }
+  const cancelP2PDownload = () => {
+    void p2pDownloader.cancel()
+  }
+  const dismissP2PShare = () => {
+    p2pDownloader.reset()
+    p2pShareCode.value = ''
+  }
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 ' + t('fileSize.bytes')
     const k = 1024
