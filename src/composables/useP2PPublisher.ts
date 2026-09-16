@@ -46,7 +46,12 @@ const BUFFER_WAIT_TIMEOUT_MS = 15000
 const safeSendFrame = (channel: RTCDataChannel, frame: ArrayBuffer | string): boolean => {
   if (channel.readyState !== 'open') return false
   try {
-    channel.send(frame)
+    // lib.dom 的 send 按类型分重载，string | ArrayBuffer 联合传入会重载解析失败，必须收窄
+    if (typeof frame === 'string') {
+      channel.send(frame)
+    } else {
+      channel.send(frame)
+    }
     return true
   } catch {
     return false
