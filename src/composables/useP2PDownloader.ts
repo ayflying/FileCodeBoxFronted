@@ -45,6 +45,7 @@ export function useP2PDownloader() {
   let socket: WebSocket | null = null
   let peerConnection: RTCPeerConnection | null = null
   let dataChannel: RTCDataChannel | null = null
+  let heartbeatTimer = 0
   let queue: Promise<void> = Promise.resolve()
   let lastSampleAt = 0
   let lastSampleBytes = 0
@@ -67,6 +68,8 @@ export function useP2PDownloader() {
   )
 
   const cleanup = () => {
+    window.clearInterval(heartbeatTimer)
+    heartbeatTimer = 0
     try {
       peerConnection?.close()
     } catch {
@@ -343,6 +346,14 @@ export function useP2PDownloader() {
 
     ws.onopen = () => {
       phase.value = 'waiting'
+      // 信令保活：传输中信令通道完全静默，跨网时空闲 TCP 会被 NAT/防火墙回收，
+      // 后端 ping 对所有角色放行，借此保持信令链路活跃
+      window.clearInterval(heartbeatTimer)
+      heartbeatTimer = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ t: 'ping' }))
+        }
+      }, 10000)
     }
 
     ws.onmessage = (event) => {
@@ -360,7 +371,16 @@ export function useP2PDownloader() {
     }
 
     ws.onclose = (event) => {
+      window.clearInterval(heartbeatTimer)
       if (phase.value === 'completed' || phase.value === 'failed') return
+      // 直连已建立时信令断开不影响媒体面：meta/end/abort 全走 DataChannel 控制帧，
+      // 此时绝不能 fail()——它会主动关闭还活着的 P2P 连接（自杀式中断）
+      if (
+        (phase.value === 'receiving' || phase.value === 'waiting') &&
+        dataChannel?.readyState === 'open'
+      ) {
+        return
+      }
       void fail(`signaling_closed_${event.code}`)
     }
   }

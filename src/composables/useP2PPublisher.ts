@@ -429,6 +429,13 @@ export function useP2PPublisher() {
     ws.onclose = (event) => {
       stopHeartbeat()
       if (phase.value === 'stopped' || phase.value === 'idle') return
+      // 已建立的直连会话不受信令断开影响，保持服务状态继续传输
+      const hasLiveSession = [...sessions.values()].some(
+        (s) => s.channel?.readyState === 'open'
+      )
+      if (hasLiveSession && phase.value !== 'idle') {
+        return
+      }
       phase.value = 'error'
       errorMessage.value = `signaling_closed_${event.code}`
     }
