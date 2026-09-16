@@ -7,6 +7,7 @@ import {
   chunkCountFor,
   crc32Hex,
   crc32Update,
+  decodeControlFrame,
   encodeControlFrame,
   readChunkAt
 } from '@/utils/p2p-transfer'
@@ -25,6 +26,8 @@ type PeerSession = {
   connection: RTCPeerConnection
   channel: RTCDataChannel | null
   busy: boolean
+  /** 下载端通过 abort 控制帧请求终止发送 */
+  aborted: boolean
   sentBytes: number
 }
 
@@ -32,6 +35,23 @@ type PeerSession = {
 const HEARTBEAT_INTERVAL_MS = 10000
 /** DataChannel 缓冲高水位，超过则等 bufferedamountlow（背压） */
 const BUFFER_HIGH_WATER = 8 * 1024 * 1024
+/** 背压等待超时：通道半死（对端不再 ACK）时不至于永久挂起 */
+const BUFFER_WAIT_TIMEOUT_MS = 15000
+
+/**
+ * 数据通道安全发送：send 前重查 readyState 并吞掉 native 异常
+ * （检查点与 send 之间隔着 await，通道可能在间隙中关闭）。
+ * 失败返回 false，由调用方统一转为业务错误（channel_closed / peer_aborted）。
+ */
+const safeSendFrame = (channel: RTCDataChannel, frame: ArrayBuffer | string): boolean => {
+  if (channel.readyState !== 'open') return false
+  try {
+    channel.send(frame)
+    return true
+  } catch {
+    return false
+  }
+}
 
 const toRtcIceServers = (servers: P2PIceServer[]): RTCIceServer[] =>
   servers.map((server) => ({
@@ -145,15 +165,20 @@ export function useP2PPublisher() {
 
   const waitForBuffer = (channel: RTCDataChannel) =>
     new Promise<void>((resolve) => {
-      if (channel.bufferedAmount <= BUFFER_HIGH_WATER) {
+      // 通道已不在 open 态时直接放行：下一帧的 safeSendFrame 会兜底失败并收敛为业务错误
+      if (channel.readyState !== 'open' || channel.bufferedAmount <= BUFFER_HIGH_WATER) {
         resolve()
         return
       }
       channel.bufferedAmountLowThreshold = BUFFER_HIGH_WATER / 2
+      let timer = 0
       const onLow = () => {
+        window.clearTimeout(timer)
         channel.removeEventListener('bufferedamountlow', onLow)
         resolve()
       }
+      // 半死通道（对端不再 ACK）不会触发 bufferedamountlow，超时放行交给 safeSendFrame 兜底
+      timer = window.setTimeout(onLow, BUFFER_WAIT_TIMEOUT_MS)
       channel.addEventListener('bufferedamountlow', onLow)
     })
 
@@ -171,17 +196,30 @@ export function useP2PPublisher() {
       const total = chunkCountFor(file.size, P2P_CHUNK_SIZE)
 
       for (let index = 0; index < total; index += 1) {
+        if (session.aborted) throw new Error('peer_aborted')
+        // 快速失败检查；真正的兜底在 safeSendFrame 的 try/catch（通道可能在 await 间隙关闭）
         if (channel.readyState !== 'open') throw new Error('channel_closed')
         const payload = await readChunkAt(file, index, P2P_CHUNK_SIZE)
         checksum = crc32Update(checksum, payload)
         await waitForBuffer(channel)
-        channel.send(buildChunkFrame(index, payload))
+        if (session.aborted) throw new Error('peer_aborted')
+        if (!safeSendFrame(channel, buildChunkFrame(index, payload))) {
+          throw new Error('channel_closed')
+        }
         session.sentBytes += payload.byteLength
         currentChunk.value = index + 1
         transferredBytes.value = session.sentBytes
       }
 
-      channel.send(encodeControlFrame({ k: 'end', checksum: crc32Hex(checksum) }))
+      // end 帧同样可能碰上通道竞态关闭，不能裸 send
+      if (
+        !safeSendFrame(
+          channel,
+          encodeControlFrame({ k: 'end', checksum: crc32Hex(checksum) })
+        )
+      ) {
+        throw new Error('channel_closed')
+      }
       servedCount.value += 1
       lastTransport.value = 'direct'
       sendSignal({
@@ -192,9 +230,17 @@ export function useP2PPublisher() {
       })
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : String(error)
+      // 发送已失败：清理该会话，避免残留半死通道
+      try {
+        session.channel?.close()
+      } catch {
+        /* 忽略关闭异常 */
+      }
+      sessions.delete(session.peerId)
+      activePeers.value = sessions.size
     } finally {
       session.busy = false
-      phase.value = sessions.size > 0 ? 'waiting' : 'waiting'
+      phase.value = 'waiting'
     }
   }
 
@@ -207,6 +253,7 @@ export function useP2PPublisher() {
       connection,
       channel: null,
       busy: false,
+      aborted: false,
       sentBytes: 0
     }
     sessions.set(peerId, session)
@@ -233,10 +280,19 @@ export function useP2PPublisher() {
       const channel = connection.createDataChannel('file', { ordered: true })
       channel.binaryType = 'arraybuffer'
       session.channel = channel
+      // 接收下载端控制帧（abort：下载端取消/失败时请求停止发送）
+      channel.onmessage = (event) => {
+        if (typeof event.data !== 'string') return
+        const control = decodeControlFrame(event.data)
+        if (control && control.k === 'abort') {
+          session.aborted = true
+        }
+      }
       channel.onopen = () => {
         const file = sourceFile.value
         if (!file) return
-        channel.send(
+        const metaSent = safeSendFrame(
+          channel,
           encodeControlFrame({
             k: 'meta',
             name: file.name,
@@ -246,6 +302,7 @@ export function useP2PPublisher() {
             checksum: ''
           })
         )
+        if (!metaSent) return
         void streamFileToPeer(session)
       }
 

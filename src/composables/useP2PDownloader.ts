@@ -7,6 +7,7 @@ import {
   crc32Hex,
   crc32Update,
   decodeControlFrame,
+  encodeControlFrame,
   parseChunkFrame,
   type P2PFileMeta,
   type P2PWriteSink
@@ -43,6 +44,7 @@ export function useP2PDownloader() {
   const sink = shallowRef<P2PWriteSink | null>(null)
   let socket: WebSocket | null = null
   let peerConnection: RTCPeerConnection | null = null
+  let dataChannel: RTCDataChannel | null = null
   let queue: Promise<void> = Promise.resolve()
   let lastSampleAt = 0
   let lastSampleBytes = 0
@@ -71,6 +73,7 @@ export function useP2PDownloader() {
       /* 忽略 */
     }
     peerConnection = null
+    dataChannel = null
 
     if (socket) {
       const ws = socket
@@ -85,7 +88,19 @@ export function useP2PDownloader() {
     queue = Promise.resolve()
   }
 
+  /** 通道仍可用时告知发布端停止发送，避免发布端继续向已断开的通道写数据 */
+  const notifyAbort = (reason: string) => {
+    if (dataChannel && dataChannel.readyState === 'open') {
+      try {
+        dataChannel.send(encodeControlFrame({ k: 'abort', reason }))
+      } catch {
+        /* 通道已不可用 */
+      }
+    }
+  }
+
   const fail = async (reason: string) => {
+    notifyAbort(reason)
     errorMessage.value = reason
     phase.value = 'failed'
     try {
@@ -183,6 +198,7 @@ export function useP2PDownloader() {
   }
 
   const attachChannel = (channel: RTCDataChannel) => {
+    dataChannel = channel
     channel.binaryType = 'arraybuffer'
     expectedChunkIndex = 0
     expectedChecksum = 0
@@ -350,6 +366,7 @@ export function useP2PDownloader() {
   }
 
   const cancel = async () => {
+    notifyAbort('downloader_cancelled')
     await sink.value?.abort()
     sink.value = null
     cleanup()
