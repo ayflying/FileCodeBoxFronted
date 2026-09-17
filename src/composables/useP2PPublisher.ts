@@ -9,6 +9,7 @@ import {
   crc32Update,
   decodeControlFrame,
   encodeControlFrame,
+  isCgnatHostCandidate,
   readChunkAt
 } from '@/utils/p2p-transfer'
 import { buildP2PSignalUrl } from '@/utils/share-url'
