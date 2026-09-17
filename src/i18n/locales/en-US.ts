@@ -468,6 +468,7 @@ export default {
     content: 'File Content',
     previewContent: 'Preview Content',
     download: 'Click to Download',
+    p2pRetrieve: 'P2P Retrieve',
     qrCode: 'Retrieve QR Code',
     scanQrCode: 'Scan QR code for quick retrieval'
   },

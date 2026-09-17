@@ -65,32 +65,49 @@
               </button>
             </div>
             <div v-else class="ml-2 flex flex-wrap gap-2">
-              <button
-                v-if="isPreviewable(record)"
-                type="button"
-                class="rounded-xl px-4 py-2 text-sm font-semibold transition duration-300"
-                :class="
-                  isDarkMode
-                    ? 'bg-zinc-200 text-zinc-950 hover:bg-zinc-100'
-                    : 'bg-zinc-800 text-white hover:bg-zinc-900'
-                "
-                @click="$emit('preview-file')"
-              >
-                {{ t('fileRecord.preview') }}
-              </button>
-              <a
-                :href="getDownloadUrl(record)"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="rounded-xl px-4 py-2 text-sm font-semibold transition duration-300"
-                :class="
-                  isDarkMode
-                    ? 'bg-zinc-200 text-zinc-950 hover:bg-zinc-100'
-                    : 'bg-zinc-800 text-white hover:bg-zinc-900'
-                "
-              >
-                {{ t('fileDetail.download') }}
-              </a>
+              <template v-if="record.isP2p">
+                <!-- P2P 文件不在服务端，没有可下载实体：引导回取件页走直连 -->
+                <button
+                  type="button"
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition duration-300"
+                  :class="
+                    isDarkMode
+                      ? 'bg-zinc-200 text-zinc-950 hover:bg-zinc-100'
+                      : 'bg-zinc-800 text-white hover:bg-zinc-900'
+                  "
+                  @click="goP2PRetrieve(record)"
+                >
+                  {{ t('fileDetail.p2pRetrieve') }}
+                </button>
+              </template>
+              <template v-else>
+                <button
+                  v-if="isPreviewable(record)"
+                  type="button"
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition duration-300"
+                  :class="
+                    isDarkMode
+                      ? 'bg-zinc-200 text-zinc-950 hover:bg-zinc-100'
+                      : 'bg-zinc-800 text-white hover:bg-zinc-900'
+                  "
+                  @click="$emit('preview-file')"
+                >
+                  {{ t('fileRecord.preview') }}
+                </button>
+                <a
+                  :href="getDownloadUrl(record)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition duration-300"
+                  :class="
+                    isDarkMode
+                      ? 'bg-zinc-200 text-zinc-950 hover:bg-zinc-100'
+                      : 'bg-zinc-800 text-white hover:bg-zinc-900'
+                  "
+                >
+                  {{ t('fileDetail.download') }}
+                </a>
+              </template>
             </div>
           </div>
         </div>
@@ -132,7 +149,7 @@ import { useI18n } from 'vue-i18n'
 import { FileIcon, CalendarIcon, HardDriveIcon, DownloadIcon } from 'lucide-vue-next'
 import QRCode from 'qrcode.vue'
 import type { ReceivedFileRecord } from '@/types'
-import { buildDownloadUrl, buildReceivedRecordQrValue } from '@/utils/share-url'
+import { buildDownloadUrl, buildReceivedRecordQrValue, buildRetrieveUrl } from '@/utils/share-url'
 
 interface Props {
   visible: boolean
@@ -154,11 +171,16 @@ const getDownloadUrl = (record: ReceivedFileRecord) => {
   return buildDownloadUrl(record.downloadUrl)
 }
 
+const goP2PRetrieve = (record: ReceivedFileRecord) => {
+  window.location.href = buildRetrieveUrl(record.code)
+}
+
 const getQRCodeValue = (record: ReceivedFileRecord) => {
   return buildReceivedRecordQrValue(record)
 }
 
 const isPreviewable = (record: ReceivedFileRecord) => {
+  if (record.isP2p) return false
   if (!record.downloadUrl) return false
   const extension = record.filename.split('.').pop()?.toLowerCase() || ''
   return [

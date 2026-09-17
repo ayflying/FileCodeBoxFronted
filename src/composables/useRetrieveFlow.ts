@@ -101,8 +101,10 @@ export function useRetrieveFlow() {
         : detail.type
           ? detail.type === 'text'
           : detail.name === 'Text' && !detail.text.startsWith('/share/download')
+    const isP2p = detail.is_p2p === true
     const content = isText ? (detail.content ?? detail.text) : null
-    const downloadUrl = isText ? null : (detail.download_url ?? detail.text)
+    // P2P 文件不在服务端，download_url 是死链，记录里不保留
+    const downloadUrl = isText || isP2p ? null : (detail.download_url ?? detail.text)
 
     return {
       id: Date.now(),
@@ -113,7 +115,8 @@ export function useRetrieveFlow() {
       content,
       date: new Date().toLocaleString(),
       type: isText ? 'text' : 'file',
-      remainingDownloads: detail.remaining_downloads
+      remainingDownloads: detail.remaining_downloads,
+      isP2p
     }
   }
 
@@ -176,6 +179,13 @@ export function useRetrieveFlow() {
 
       const res = await FileService.selectFile(normalizedCode.value)
       if (res.code === 200 && res.detail) {
+        // P2P 探测异常时可能漏到服务端取件：select 响应带 is_p2p 标记，
+        // 识别后不建记录、不弹服务端详情，直接转 P2P 直连面板
+        if (res.detail.is_p2p === true) {
+          keepCode = true
+          p2pShareCode.value = normalizedCode.value
+          return
+        }
         const newFileData = createRecord(res.detail)
         const existingIndex = fileStore.receiveData.findIndex(
           (file) => file.code === newFileData.code

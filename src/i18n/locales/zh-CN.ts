@@ -389,6 +389,7 @@ export default {
       content: '文件内容',
       previewContent: '预览内容',
       download: '点击下载',
+      p2pRetrieve: 'P2P 取件',
       qrCode: '取件二维码',
       scanQrCode: '扫描二维码快速取件'
     },
@@ -745,6 +746,7 @@ export default {
     content: '文件内容',
     previewContent: '预览内容',
     download: '点击下载',
+    p2pRetrieve: 'P2P 取件',
     qrCode: '取件二维码',
     scanQrCode: '扫描二维码快速取件'
   },

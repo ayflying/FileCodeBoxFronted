@@ -417,6 +417,7 @@ export interface ShareSelectResponse {
   size: number
   type?: 'file' | 'text'
   is_text?: boolean
+  is_p2p?: boolean
   content?: string | null
   download_url?: string | null
   created_at?: string | null
@@ -451,6 +452,8 @@ export interface ReceivedFileRecord {
   date: string
   type?: 'file' | 'text'
   remainingDownloads?: number | null
+  /** P2P 直传分享：文件不在服务端，下载/二维码必须走取件页直连 */
+  isP2p?: boolean
 }
 
 export interface SentFileRecord {
