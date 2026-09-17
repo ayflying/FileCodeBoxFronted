@@ -128,18 +128,25 @@ export function canStreamToDisk(): boolean {
 }
 
 /**
- * 非流式回退路径的内存上限（见设计文档 D9）。
- * HTTP 明文访问时浏览器不暴露 File System Access API（仅 HTTPS/localhost），
- * 只能走内存拼 Blob；Chromium 的 Blob storage 会自动把大 Blob 落盘缓存，
- * 桌面环境 2GB 以内可靠（峰值内存约为文件大小的 2 倍）。
+ * 是否为 CGNAT/虚拟网段（100.64.0.0/10）的 host 候选。
+ * lanet 等虚拟网卡占用该段：两端都装虚拟网时 ICE 会因 host 优先级最高而选中它，
+ * 跨网流量会被虚网隧道（可能经公网中继）接管，带宽被限死。
+ * 在候选交换时跳过该段，迫使 ICE 走公网 srflx 打洞（真实直连）；
+ * 运营商蜂窝内网（4G/5G 下发 100.x 地址）同样适用——该地址跨网本就不可达。
  */
-export const P2P_BLOB_FALLBACK_LIMIT = 2 * 1024 * 1024 * 1024
+export const isCgnatHostCandidate = (candidate: RTCIceCandidate): boolean => {
+  if (candidate.type && candidate.type !== 'host') return false
+  const raw = `${candidate.address || ''} ${candidate.candidate || ''}`
+  return /\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/.test(raw)
+}
 
 export type P2PWriteSink = {
   readonly streaming: boolean
   write: (payload: Uint8Array) => Promise<void>
   finalize: () => Promise<void>
   abort: () => Promise<void>
+  /** 已落盘的分卷数（流式落盘恒为 1；内存模式按卷阈值自动切分） */
+  readonly volumeCount: () => number
 }
 
 type WritableStreamLike = {
@@ -148,26 +155,63 @@ type WritableStreamLike = {
   abort: () => Promise<void>
 }
 
+export type P2PSaveFileHandle = { createWritable: () => Promise<WritableStreamLike> }
+
 type SavePickerWindow = Window & {
-  showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<{
-    createWritable: () => Promise<WritableStreamLike>
-  }>
+  showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<P2PSaveFileHandle>
 }
 
 export type P2PSinkSaveHandler = (blob: Blob, fileName: string) => Promise<void>
 
+/** 内存分卷的单卷阈值：HTTP 环境没有流式落盘 API，按卷切分落盘，内存峰值恒定 */
+export const P2P_BLOB_VOLUME_SIZE = 1024 * 1024 * 1024
+
+/**
+ * 在用户手势上下文内弹出系统「保存文件」对话框，预选落盘句柄。
+ * showSaveFilePicker 要求 transient user activation，而 P2P 的 meta 帧到达
+ * 在 WebSocket 回调里（手势早已过期），因此必须在点击「下载」按钮的时刻
+ * 先调用本函数拿句柄，之后 meta 帧用句柄 createWritable（不再需要手势）。
+ * 非安全上下文（HTTP）返回 null；用户取消对话框也返回 null（回退内存模式）。
+ */
+export async function pickSaveTarget(fileName: string): Promise<P2PSaveFileHandle | null> {
+  const target = window as SavePickerWindow
+  if (!canStreamToDisk() || !target.showSaveFilePicker) return null
+  try {
+    return await target.showSaveFilePicker({ suggestedName: fileName })
+  } catch {
+    return null
+  }
+}
+
 /**
  * 建一个落盘 sink。
- * - 支持 File System Access API 时边收边写（大文件友好）；
- * - 否则在内存里拼 Blob，由 saveBlob 在 finalize 时交给下载动作保存。
+ * - 安全上下文（HTTPS）流式边收边写：单文件无上限、不分卷；
+ * - HTTP（内存模式）不限制总大小，超过单卷阈值自动保存为
+ *   `文件名.001/.002/...` 分卷（浏览器沙箱无法自动合并，由用户用一条命令合并，
+ *   CRC 校验仍是整文件的，合并后与源文件一致）。
  */
 export async function createP2PWriteSink(
   fileName: string,
   size: number,
-  saveBlob: P2PSinkSaveHandler
+  saveBlob: P2PSinkSaveHandler,
+  pickedHandle?: P2PSaveFileHandle | null
 ): Promise<P2PWriteSink> {
-  const target = window as SavePickerWindow
+  if (pickedHandle) {
+    try {
+      const stream = await pickedHandle.createWritable()
+      return {
+        streaming: true,
+        write: (payload) => stream.write(payload),
+        finalize: () => stream.close(),
+        abort: () => stream.abort(),
+        volumeCount: () => 1
+      }
+    } catch {
+      /* 句柄失效（磁盘变动等）时回退内存模式 */
+    }
+  }
 
+  const target = window as SavePickerWindow
   if (canStreamToDisk() && target.showSaveFilePicker) {
     try {
       const handle = await target.showSaveFilePicker({ suggestedName: fileName })
@@ -176,30 +220,46 @@ export async function createP2PWriteSink(
         streaming: true,
         write: (payload) => stream.write(payload),
         finalize: () => stream.close(),
-        abort: () => stream.abort()
+        abort: () => stream.abort(),
+        volumeCount: () => 1
       }
     } catch {
       // 缺少用户手势（SecurityError）或用户取消时回退到内存拼装
     }
   }
 
-  if (size > P2P_BLOB_FALLBACK_LIMIT) {
-    throw new Error('blob_fallback_too_large')
-  }
+  const splitIntoVolumes = size > P2P_BLOB_VOLUME_SIZE
+  const volumeSuffix = (index: number) => `.${String(index).padStart(3, '0')}`
 
   const parts: BlobPart[] = []
+  let buffered = 0
+  let volumes = 0
+
+  const flushVolume = async () => {
+    if (!parts.length) return
+    volumes += 1
+    const name = splitIntoVolumes ? `${fileName}${volumeSuffix(volumes)}` : fileName
+    await saveBlob(new Blob(parts), name)
+    parts.length = 0
+    buffered = 0
+  }
+
   return {
     streaming: false,
     write: async (payload) => {
-      parts.push(payload.slice())
+      const bytes = payload.slice()
+      parts.push(bytes)
+      buffered += bytes.byteLength
+      if (splitIntoVolumes && buffered >= P2P_BLOB_VOLUME_SIZE) {
+        await flushVolume()
+      }
     },
-    finalize: async () => {
-      await saveBlob(new Blob(parts), fileName)
-      parts.length = 0
-    },
+    finalize: flushVolume,
     abort: async () => {
       parts.length = 0
-    }
+      buffered = 0
+    },
+    volumeCount: () => volumes
   }
 }
 

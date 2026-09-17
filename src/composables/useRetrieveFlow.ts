@@ -60,6 +60,7 @@ export function useRetrieveFlow() {
       transport: p2pDownloader.transport.value,
       savedName: p2pDownloader.savedName.value,
       verified: p2pDownloader.verified.value,
+      volumeCount: p2pDownloader.volumeCount.value,
       errorMessage: p2pDownloader.errorMessage.value
     }
   })

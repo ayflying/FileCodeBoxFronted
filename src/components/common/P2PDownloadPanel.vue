@@ -100,6 +100,18 @@
       >
         {{ t('p2p.retrieve.savedAs', { name: state.savedName }) }}
       </p>
+      <div
+        v-if="state.phase === 'completed' && state.volumeCount > 1"
+        class="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-[11px] leading-5 text-amber-600 dark:text-amber-400"
+      >
+        <p>{{ t('p2p.retrieve.volumesHint', { count: state.volumeCount }) }}</p>
+        <p class="mt-1 font-mono text-[10px] break-all">
+          Windows: copy /b "{{ state.savedName }}.001" + "{{ state.savedName }}.002" "{{ state.savedName }}"
+        </p>
+        <p class="font-mono text-[10px] break-all">
+          macOS/Linux: cat "{{ state.savedName }}".0* > "{{ state.savedName }}"
+        </p>
+      </div>
     </div>
 
     <p
@@ -164,6 +176,7 @@ export type P2PDownloadPanelState = {
   transport: string | null
   savedName: string
   verified: boolean | null
+  volumeCount: number
   errorMessage: string
 }
 

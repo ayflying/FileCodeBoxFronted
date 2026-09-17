@@ -8,8 +8,11 @@ import {
   crc32Update,
   decodeControlFrame,
   encodeControlFrame,
+  isCgnatHostCandidate,
   parseChunkFrame,
+  pickSaveTarget,
   type P2PFileMeta,
+  type P2PSaveFileHandle,
   type P2PWriteSink
 } from '@/utils/p2p-transfer'
 import { buildP2PSignalUrl } from '@/utils/share-url'
@@ -42,10 +45,13 @@ export function useP2PDownloader() {
   const isP2PShare = ref(false)
 
   const sink = shallowRef<P2PWriteSink | null>(null)
+  const volumeCount = ref(1)
   let socket: WebSocket | null = null
   let peerConnection: RTCPeerConnection | null = null
   let dataChannel: RTCDataChannel | null = null
   let heartbeatTimer = 0
+  /** 用户点击下载时预选的落盘句柄（HTTPS 流式用，手势期内才拿得到） */
+  let pickedHandle: P2PSaveFileHandle | null = null
   let queue: Promise<void> = Promise.resolve()
   let lastSampleAt = 0
   let lastSampleBytes = 0
@@ -142,7 +148,7 @@ export function useP2PDownloader() {
       lastSampleBytes = 0
       phase.value = 'receiving'
       try {
-        sink.value = await createP2PWriteSink(meta.name, meta.size, saveBlobAsDownload)
+        sink.value = await createP2PWriteSink(meta.name, meta.size, saveBlobAsDownload, pickedHandle)
         savedName.value = meta.name
       } catch (error) {
         await fail(error instanceof Error ? error.message : 'sink_unavailable')
@@ -164,6 +170,7 @@ export function useP2PDownloader() {
         return
       }
       verified.value = crc32Hex(expectedChecksum) === control.checksum
+      volumeCount.value = current.volumeCount()
       phase.value = 'completed'
       transport.value = 'direct'
       cleanup()
@@ -237,7 +244,9 @@ export function useP2PDownloader() {
       peerConnection = connection
 
       connection.onicecandidate = (event) => {
-        if (event.candidate) {
+        // 跳过 CGNAT/虚拟网段 host 候选：两端都在虚网时它优先级最高，
+        // 会把跨网流量引入虚网隧道（可能经中继限速），过滤后走公网打洞直连
+        if (event.candidate && !isCgnatHostCandidate(event.candidate)) {
           sendSignal({ t: 'ice', candidate: event.candidate.toJSON() })
         }
       }
@@ -318,12 +327,18 @@ export function useP2PDownloader() {
     transport.value = null
     expectedChunkIndex = 0
     expectedChecksum = 0
+    volumeCount.value = 1
 
     const status = remoteStatus.value ?? (await inspect(code))
     if (!status) {
       await fail('not_p2p_share')
       return
     }
+
+    // 此刻处于用户手势内：HTTPS 下先弹保存对话框预选落盘句柄，
+    // 稍后 meta 帧到达（WS 回调，手势已过期）时凭句柄直接流式落盘。
+    // HTTP 下返回 null，走内存模式（超 1GB 自动分卷）。
+    pickedHandle = await pickSaveTarget(status.name)
     if (status.expired) {
       await fail('share_expired')
       return
@@ -404,6 +419,8 @@ export function useP2PDownloader() {
     verified.value = null
     speed.value = 0
     transport.value = null
+    volumeCount.value = 1
+    pickedHandle = null
     phase.value = 'idle'
   }
 
@@ -414,6 +431,7 @@ export function useP2PDownloader() {
     totalBytes,
     errorMessage,
     savedName,
+    volumeCount,
     verified,
     speed,
     transport,

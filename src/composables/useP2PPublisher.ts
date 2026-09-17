@@ -268,7 +268,9 @@ export function useP2PPublisher() {
     activePeers.value = sessions.size
 
     connection.onicecandidate = (event) => {
-      if (event.candidate) {
+      // 跳过 CGNAT/虚拟网段 host 候选：两端都在虚网时它优先级最高，
+      // 会把跨网流量引入虚网隧道（可能经中继限速），过滤后走公网打洞直连
+      if (event.candidate && !isCgnatHostCandidate(event.candidate)) {
         sendSignal({
           t: 'ice',
           peer: peerId,

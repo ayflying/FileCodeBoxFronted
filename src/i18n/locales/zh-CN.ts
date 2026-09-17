@@ -270,6 +270,7 @@ export default {
       bytes: '已接收 {received} / {total}',
       speed: '速度 {speed}/s',
       savedAs: '已保存为 {name}',
+      volumesHint: '文件较大，已自动分为 {count} 个分卷（浏览器无法自动合并，合并后校验值不变）',
       errors: {
         not_p2p_share: '该取件码不是 P2P 分享',
         share_expired: '分享已失效',

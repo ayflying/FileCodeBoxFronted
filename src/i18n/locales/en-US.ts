@@ -274,6 +274,8 @@ export default {
       bytes: 'Received {received} / {total}',
       speed: 'Speed {speed}/s',
       savedAs: 'Saved as {name}',
+      volumesHint:
+        'Large file saved as {count} volume parts (the browser cannot merge them; checksum stays valid after merging)',
       errors: {
         not_p2p_share: 'This code is not a P2P share',
         share_expired: 'This share has expired',
