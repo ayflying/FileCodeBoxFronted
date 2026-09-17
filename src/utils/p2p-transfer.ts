@@ -127,8 +127,13 @@ export function canStreamToDisk(): boolean {
   return window.isSecureContext && typeof target.showSaveFilePicker === 'function'
 }
 
-/** 非流式回退路径的内存上限（见设计文档 D9） */
-export const P2P_BLOB_FALLBACK_LIMIT = 512 * 1024 * 1024
+/**
+ * 非流式回退路径的内存上限（见设计文档 D9）。
+ * HTTP 明文访问时浏览器不暴露 File System Access API（仅 HTTPS/localhost），
+ * 只能走内存拼 Blob；Chromium 的 Blob storage 会自动把大 Blob 落盘缓存，
+ * 桌面环境 2GB 以内可靠（峰值内存约为文件大小的 2 倍）。
+ */
+export const P2P_BLOB_FALLBACK_LIMIT = 2 * 1024 * 1024 * 1024
 
 export type P2PWriteSink = {
   readonly streaming: boolean

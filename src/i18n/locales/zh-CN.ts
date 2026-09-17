@@ -278,7 +278,7 @@ export default {
         sink_unavailable: '无法写入文件',
         channel_closed: '直连中断，请重新取件',
         peer_connection_failed: '直连建立失败，请检查网络后重试',
-        blob_fallback_too_large: '文件过大，当前环境无法保存，请改用支持流式落盘的浏览器'
+        blob_fallback_too_large: '文件超过 2GB：当前为 HTTP 访问，浏览器禁用流式落盘（仅 HTTPS 可用），内存暂存已到上限，请通过 HTTPS 访问本站'
       }
     }
   },

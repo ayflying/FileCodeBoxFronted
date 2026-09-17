@@ -283,7 +283,7 @@ export default {
         channel_closed: 'Direct connection lost, please retrieve again',
         peer_connection_failed: 'Failed to establish direct connection, please check your network',
         blob_fallback_too_large:
-          'File too large to save here; use a browser that supports streaming to disk'
+          'File exceeds 2GB: over HTTP the browser disables streaming to disk (HTTPS only), so in-memory buffering is capped. Please access this site via HTTPS'
       }
     }
   },
